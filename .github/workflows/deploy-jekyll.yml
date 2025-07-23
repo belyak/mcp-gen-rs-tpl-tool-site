@@ -1,0 +1,760 @@
+name: Deploy Jekyll to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'README.md'
+      - 'docs/**'
+      - 'jekyll-site/**'
+      - '.github/workflows/deploy-jekyll.yml'
+  workflow_dispatch:
+  schedule:
+    # Обновление каждый день в 00:00 UTC для синхронизации статистики GitHub
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Разрешить только один concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      pages-url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: true
+
+      - name: Create Jekyll structure
+        run: |
+          echo "🏗️ Creating Jekyll site structure..."
+          mkdir -p jekyll-site
+          cd jekyll-site
+          
+          # Create _config.yml
+          cat > _config.yml << 'EOF'
+          title: "MCP Rust Template Tool"
+          description: "Современный шаблон для создания Model Context Protocol (MCP) серверов на Rust с интеграцией в Claude Desktop"
+          baseurl: "/mcp-claude-stdio-template"
+          url: "https://${{ github.repository_owner }}.github.io"
+          
+          repository: "${{ github.repository }}"
+          github_username: ${{ github.repository_owner }}
+          
+          theme: jekyll-theme-cayman
+          remote_theme: pages-themes/cayman@v0.2.0
+          
+          plugins:
+            - jekyll-feed
+            - jekyll-sitemap
+            - jekyll-seo-tag
+            - jekyll-relative-links
+            - jekyll-optional-front-matter
+            - jekyll-readme-index
+            - jekyll-default-layout
+            - jekyll-titles-from-headings
+          
+          markdown: kramdown
+          kramdown:
+            input: GFM
+            syntax_highlighter: rouge
+            syntax_highlighter_opts:
+              css_class: 'highlight'
+          
+          highlighter: rouge
+          
+          lang: ru-RU
+          author: "Andrei Beliak"
+          
+          social_links:
+            github: ${{ github.repository_owner }}
+          
+          exclude:
+            - target/
+            - test-gen*/
+            - Cargo.lock
+            - "*.log"
+            - "*.jsonl"
+            - Gemfile
+            - Gemfile.lock
+            - node_modules
+            - vendor/
+            - README.md.old
+            - test_template.sh
+            - install_mcp.sh
+            - justfile
+            - LICENSE
+          
+          include:
+            - .htaccess
+            - _pages
+          
+          sass:
+            sass_dir: _sass
+            style: compressed
+          
+          timezone: Europe/Moscow
+          
+          # GitHub metadata
+          github: [metadata]
+          EOF
+          
+          # Create Gemfile
+          cat > Gemfile << 'EOF'
+          source "https://rubygems.org"
+          
+          gem "jekyll", "~> 4.3.0"
+          gem "jekyll-theme-cayman"
+          gem "jekyll-feed"
+          gem "jekyll-sitemap"
+          gem "jekyll-seo-tag"
+          gem "jekyll-relative-links"
+          gem "jekyll-optional-front-matter"
+          gem "jekyll-readme-index"
+          gem "jekyll-default-layout"
+          gem "jekyll-titles-from-headings"
+          gem "jekyll-github-metadata"
+          
+          group :jekyll_plugins do
+            gem "jekyll-feed"
+            gem "jekyll-sitemap"
+            gem "jekyll-seo-tag"
+            gem "jekyll-relative-links"
+            gem "jekyll-optional-front-matter"
+            gem "jekyll-readme-index"
+            gem "jekyll-default-layout"
+            gem "jekyll-titles-from-headings"
+            gem "jekyll-github-metadata"
+          end
+          
+          platforms :mingw, :x64_mingw, :mswin, :jruby do
+            gem "tzinfo", ">= 1", "< 3"
+            gem "tzinfo-data"
+          end
+          
+          gem "wdm", "~> 0.1.1", :platforms => [:mingw, :x64_mingw, :mswin]
+          gem "http_parser.rb", "~> 0.6.0", :platforms => [:jruby]
+          EOF
+
+      - name: Create Jekyll content
+        run: |
+          cd jekyll-site
+          
+          # Create directories
+          mkdir -p _layouts _includes _sass assets/css assets/js _data docs
+          
+          # Create enhanced index.md
+          cat > index.md << 'EOF'
+          ---
+          layout: default
+          title: "MCP Rust Template Tool"
+          description: "Современный шаблон для создания Model Context Protocol (MCP) серверов на Rust"
+          ---
+          
+          # MCP Rust Template Tool
+          
+          ![Build Status](https://github.com/${{ github.repository }}/actions/workflows/ci.yml/badge.svg)
+          ![License](https://img.shields.io/github/license/${{ github.repository }})
+          ![GitHub stars](https://img.shields.io/github/stars/${{ github.repository }}?style=social)
+          ![GitHub release](https://img.shields.io/github/v/release/${{ github.repository }})
+          
+          <div class="hero-section">
+            <h2>🚀 Современный шаблон для создания MCP серверов на Rust</h2>
+            <p class="lead">Полнофункциональный Model Context Protocol сервер с интеграцией в Claude Desktop</p>
+            
+            <div class="buttons">
+              <a href="https://github.com/${{ github.repository }}" class="btn btn-primary">
+                📁 GitHub Repository
+              </a>
+              <a href="#quick-start" class="btn btn-secondary">
+                🏁 Быстрый старт
+              </a>
+              <a href="/docs/architecture" class="btn btn-secondary">
+                📖 Документация
+              </a>
+            </div>
+          </div>
+          
+          ## ✨ Ключевые особенности
+          
+          <div class="features-grid">
+            <div class="feature">
+              <h3>🔧 Готов к использованию</h3>
+              <p>Полнофункциональный MCP сервер из коробки с поддержкой всех основных функций протокола</p>
+            </div>
+            
+            <div class="feature">
+              <h3>📋 JSON-RPC 2.0</h3>
+              <p>Полная реализация спецификации MCP с поддержкой всех стандартных методов</p>
+            </div>
+            
+            <div class="feature">
+              <h3>🛠️ Три типа функций</h3>
+              <p>Prompts, Resources и Tools - все необходимые компоненты для создания мощных AI агентов</p>
+            </div>
+            
+            <div class="feature">
+              <h3>🧪 Автотесты</h3>
+              <p>Встроенное тестирование, CI/CD pipeline и автоматическая проверка шаблона</p>
+            </div>
+            
+            <div class="feature">
+              <h3>�� Claude Desktop</h3>
+              <p>Готовая интеграция с Claude Desktop на macOS с автоматической установкой</p>
+            </div>
+            
+            <div class="feature">
+              <h3>⚡ Производительность</h3>
+              <p>Оптимизированная сборка для production с минимальным потреблением ресурсов</p>
+            </div>
+          </div>
+          
+          ## 🚀 Быстрый старт {#quick-start}
+          
+          ### Создание нового проекта
+          
+          ```bash
+          # 1. Установите cargo-generate
+          cargo install cargo-generate
+          
+          # 2. Создайте проект из шаблона
+          cargo generate --git https://github.com/${{ github.repository }}
+          
+          # 3. Перейдите в созданный проект
+          cd your-project-name
+          
+          # 4. Соберите проект
+          cargo build --release
+          
+          # 5. Запустите тесты
+          cargo test
+          ```
+          
+          ### Интеграция с Claude Desktop
+          
+          ```bash
+          # Автоматическая установка и настройка
+          ./install_mcp.sh
+          ```
+          
+          ## 📊 Проектная статистика
+          
+          <div class="stats-grid">
+            <div class="stat-card">
+              <h4>⭐ GitHub Stars</h4>
+              <div class="stat-number" id="github-stars">Loading...</div>
+            </div>
+            <div class="stat-card">
+              <h4>🍴 Forks</h4>
+              <div class="stat-number" id="github-forks">Loading...</div>
+            </div>
+            <div class="stat-card">
+              <h4>🐛 Issues</h4>
+              <div class="stat-number" id="github-issues">Loading...</div>
+            </div>
+            <div class="stat-card">
+              <h4>📊 Language</h4>
+              <div class="stat-number">Rust 95%</div>
+            </div>
+          </div>
+          
+          ## 🛠️ Архитектура
+          
+          ```mermaid
+          graph TB
+              A[Claude Desktop] -->|JSON-RPC| B[MCP Server]
+              B --> C[Router]
+              C --> D[Prompts Handler]
+              C --> E[Resources Handler] 
+              C --> F[Tools Handler]
+              C --> G[Utilities Handler]
+              
+              D --> H[prompts.json]
+              E --> I[resources.json]
+              F --> J[tools.json]
+          ```
+          
+          ## 🎯 Примеры использования
+          
+          ### Создание простого инструмента
+          
+          ```rust
+          pub async fn current_time(request: CurrentTimeRequest) -> HandlerResult<CallToolResult> {
+              let city = request.city.unwrap_or_else(|| "UTC".to_string());
+              let result = format!("Current time in {}: {}", city, chrono::Local::now().to_rfc2822());
+              
+              Ok(CallToolResult {
+                  content: vec![CallToolResultContent::Text { text: result }],
+                  is_error: false,
+              })
+          }
+          ```
+          
+          ### Конфигурация инструмента
+          
+          ```json
+          {
+            "name": "get_current_time_in_city",
+            "description": "Получить текущее время в указанном городе",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "Название города"
+                }
+              },
+              "required": ["city"]
+            }
+          }
+          ```
+          
+          ## �� Документация
+          
+          <div class="doc-grid">
+            <a href="/docs/architecture" class="doc-card">
+              <h4>🏗️ Архитектура</h4>
+              <p>Подробное описание структуры проекта и компонентов</p>
+            </a>
+            
+            <a href="/docs/configuration" class="doc-card">
+              <h4>⚙️ Конфигурация</h4>
+              <p>Настройка промптов, ресурсов и инструментов</p>
+            </a>
+            
+            <a href="/docs/integration" class="doc-card">
+              <h4>🔗 Интеграция</h4>
+              <p>Подключение к Claude Desktop и другим клиентам</p>
+            </a>
+            
+            <a href="/docs/development" class="doc-card">
+              <h4>🛠️ Разработка</h4>
+              <p>Руководство по разработке и расширению функциональности</p>
+            </a>
+          </div>
+          
+          ## 📈 Дорожная карта
+          
+          - [x] **v0.1.0** - Базовый функционал MCP сервера
+          - [ ] **v0.2.0** - Поддержка WebSocket соединений
+          - [ ] **v0.3.0** - Интеграция с базами данных
+          - [ ] **v0.4.0** - Веб-интерфейс для управления
+          - [ ] **v0.5.0** - Система плагинов
+          
+          ## 🤝 Сообщество
+          
+          <div class="community-grid">
+            <div class="community-card">
+              <h4>💬 Обсуждения</h4>
+              <p>Присоединяйтесь к обсуждениям на GitHub</p>
+              <a href="https://github.com/${{ github.repository }}/discussions">Discussions →</a>
+            </div>
+            
+            <div class="community-card">
+              <h4>🐛 Сообщить об ошибке</h4>
+              <p>Нашли баг? Создайте issue на GitHub</p>
+              <a href="https://github.com/${{ github.repository }}/issues">Issues →</a>
+            </div>
+            
+            <div class="community-card">
+              <h4>🤝 Внести вклад</h4>
+              <p>Помогите улучшить проект</p>
+              <a href="https://github.com/${{ github.repository }}/blob/main/CONTRIBUTING.md">Contributing →</a>
+            </div>
+          </div>
+          
+          ---
+          
+          <div class="footer-cta">
+            <h3>Готовы начать?</h3>
+            <p>Создайте свой первый MCP сервер за несколько минут</p>
+            <a href="https://github.com/${{ github.repository }}" class="btn btn-primary btn-large">
+              🚀 Создать проект
+            </a>
+          </div>
+          
+          <script>
+          // Загрузка статистики GitHub
+          async function loadGitHubStats() {
+            try {
+              const response = await fetch('https://api.github.com/repos/${{ github.repository }}');
+              const data = await response.json();
+              
+              document.getElementById('github-stars').textContent = data.stargazers_count || '0';
+              document.getElementById('github-forks').textContent = data.forks_count || '0';
+              document.getElementById('github-issues').textContent = data.open_issues_count || '0';
+            } catch (error) {
+              console.error('Failed to load GitHub stats:', error);
+              document.getElementById('github-stars').textContent = 'N/A';
+              document.getElementById('github-forks').textContent = 'N/A';
+              document.getElementById('github-issues').textContent = 'N/A';
+            }
+          }
+          
+          // Загружаем статистику при загрузке страницы
+          document.addEventListener('DOMContentLoaded', loadGitHubStats);
+          </script>
+          EOF
+          
+          # Copy README content if exists
+          if [ -f "../README.md" ]; then
+            echo "📝 Converting README.md to Jekyll format..."
+            # Convert existing README to Jekyll page
+            cat > docs/readme.md << 'EOF'
+          ---
+          layout: default
+          title: "Оригинальный README"
+          description: "Оригинальная документация проекта"
+          ---
+          
+          EOF
+            cat "../README.md" >> docs/readme.md
+          fi
+
+      - name: Create enhanced CSS
+        run: |
+          cd jekyll-site
+          
+          # Create enhanced stylesheet
+          cat > assets/css/style.scss << 'EOF'
+          ---
+          ---
+          
+          @import "{{ site.theme }}";
+          
+          // Color variables
+          :root {
+            --primary-color: #28a745;
+            --secondary-color: #6c757d;
+            --accent-color: #007bff;
+            --background-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --text-color: #333;
+            --border-color: #dee2e6;
+            --hover-shadow: 0 4px 8px rgba(0,0,0,0.1);
+          }
+          
+          // Hero section
+          .hero-section {
+            text-align: center;
+            margin: 2rem 0;
+            padding: 3rem 2rem;
+            background: var(--background-gradient);
+            color: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            
+            h2 {
+              margin-bottom: 1rem;
+              font-size: 2.5rem;
+              font-weight: 700;
+            }
+            
+            .lead {
+              font-size: 1.3rem;
+              margin-bottom: 2rem;
+              opacity: 0.95;
+            }
+          }
+          
+          // Button styles
+          .buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+          }
+          
+          .btn {
+            display: inline-block;
+            padding: 0.875rem 2rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            
+            &:hover {
+              transform: translateY(-3px);
+              box-shadow: var(--hover-shadow);
+              text-decoration: none;
+            }
+          }
+          
+          .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            
+            &:hover {
+              background-color: darken(var(--primary-color), 10%);
+            }
+          }
+          
+          .btn-secondary {
+            background-color: var(--secondary-color);
+            color: white;
+            
+            &:hover {
+              background-color: darken(var(--secondary-color), 10%);
+            }
+          }
+          
+          .btn-large {
+            font-size: 1.2rem;
+            padding: 1.2rem 2.5rem;
+          }
+          
+          // Grid layouts
+          .features-grid, .doc-grid, .community-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+          }
+          
+          .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+          }
+          
+          // Card styles
+          .feature, .doc-card, .community-card, .stat-card {
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: #ffffff;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            
+            &:hover {
+              transform: translateY(-5px);
+              box-shadow: var(--hover-shadow);
+              border-color: var(--accent-color);
+            }
+            
+            h3, h4 {
+              margin-top: 0;
+              margin-bottom: 1rem;
+              color: var(--accent-color);
+            }
+            
+            p {
+              margin-bottom: 1rem;
+              line-height: 1.6;
+            }
+          }
+          
+          .doc-card, .community-card {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            
+            a {
+              color: var(--accent-color);
+              text-decoration: none;
+              font-weight: 600;
+              
+              &:hover {
+                text-decoration: underline;
+              }
+            }
+          }
+          
+          .stat-card {
+            text-align: center;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            
+            h4 {
+              font-size: 0.9rem;
+              color: var(--secondary-color);
+              margin-bottom: 0.5rem;
+            }
+            
+            .stat-number {
+              font-size: 2rem;
+              font-weight: 700;
+              color: var(--accent-color);
+            }
+          }
+          
+          // Footer CTA
+          .footer-cta {
+            text-align: center;
+            margin: 4rem 0;
+            padding: 3rem 2rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            
+            h3 {
+              margin-bottom: 1rem;
+              color: var(--text-color);
+            }
+            
+            p {
+              margin-bottom: 2rem;
+              color: var(--secondary-color);
+              font-size: 1.1rem;
+            }
+          }
+          
+          // Code blocks
+          .highlight {
+            border-radius: 8px;
+            margin: 1.5rem 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+          }
+          
+          pre {
+            padding: 1.5rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+          }
+          
+          // Responsive design
+          @media (max-width: 768px) {
+            .hero-section {
+              padding: 2rem 1rem;
+              
+              h2 {
+                font-size: 2rem;
+              }
+              
+              .lead {
+                font-size: 1.1rem;
+              }
+            }
+            
+            .buttons {
+              flex-direction: column;
+              align-items: center;
+            }
+            
+            .btn {
+              min-width: 200px;
+            }
+            
+            .features-grid, .doc-grid, .community-grid {
+              grid-template-columns: 1fr;
+              gap: 1.5rem;
+            }
+            
+            .stats-grid {
+              grid-template-columns: repeat(2, 1fr);
+            }
+          }
+          
+          // Badges
+          .badge {
+            display: inline-block;
+            padding: 0.35rem 0.65rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 0.375rem;
+            margin: 0.2rem;
+          }
+          
+          // Animations
+          @keyframes fadeInUp {
+            from {
+              opacity: 0;
+              transform: translateY(30px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          
+          .feature, .doc-card, .community-card, .stat-card {
+            animation: fadeInUp 0.6s ease-out;
+          }
+          
+          // Dark mode support
+          @media (prefers-color-scheme: dark) {
+            :root {
+              --text-color: #e9ecef;
+              --border-color: #495057;
+            }
+            
+            .feature, .doc-card, .community-card, .stat-card {
+              background: #2d3748;
+              color: #e9ecef;
+              border-color: #4a5568;
+            }
+            
+            .footer-cta {
+              background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+              color: #e9ecef;
+            }
+          }
+          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Install dependencies and build
+        run: |
+          cd jekyll-site
+          bundle install
+          bundle exec jekyll build --verbose
+        env:
+          JEKYLL_ENV: production
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./jekyll-site/_site
+
+  # Deployment job
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Notify job
+  notify:
+    runs-on: ubuntu-latest
+    needs: [build, deploy]
+    if: always()
+    steps:
+      - name: Notify deployment status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Jekyll site successfully deployed to GitHub Pages!"
+            echo "🌐 Site URL: ${{ needs.build.outputs.pages-url }}"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi
