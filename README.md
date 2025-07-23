@@ -51,7 +51,7 @@ A comprehensive **Rust template** for building [Model Context Protocol (MCP)](ht
 cargo install cargo-generate
 
 # Generate new MCP server from template
-cargo generate --git https://github.com/belyak/mcp-claude-stdio-template
+cargo generate --git https://github.com/belyak/mcp-gen-rs-tpl-tool-site
 ```
 
 You'll be prompted for:
